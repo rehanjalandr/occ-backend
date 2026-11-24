@@ -8,6 +8,7 @@ from datetime import date
 import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 BASE = "https://api.upstox.com/v2"
 CACHE_SECONDS = 60
@@ -28,6 +29,11 @@ def headers():
 
 @app.get("/")
 def home():
+    return FileResponse("index.html")
+
+
+@app.get("/health")
+def health():
     return {"ok": True, "msg": "OCC backend chal raha hai"}
 
 
