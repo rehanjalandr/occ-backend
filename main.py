@@ -1,7 +1,6 @@
 """
-OCC backend: Upstox se option chain leta hai, 75 strikes deta hai.
-Chalane ke liye:  uvicorn main:app --host 0.0.0.0 --port 8000
-Roz subah ek baar browser mein  /login  kholo (token roz expire hota hai).
+OCC backend (Analytics Token wala): Upstox se option chain leta hai, 75 strikes deta hai.
+Roz login ki zaroorat nahi. Sirf ek environment variable chahiye: UPSTOX_TOKEN
 """
 import gzip, io, json, os, time
 from datetime import date
@@ -9,59 +8,30 @@ from datetime import date
 import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
 
-KEY = os.environ["UPSTOX_KEY"]            # API key
-SECRET = os.environ["UPSTOX_SECRET"]      # API secret (sirf yahin rakho)
-REDIRECT = os.environ["UPSTOX_REDIRECT"]  # jaise https://tumhara-server.com/callback
 BASE = "https://api.upstox.com/v2"
-TOKEN_FILE = "token.json"
 CACHE_SECONDS = 60
-HALF = 37                                 # 37 + ATM + 37 = 75 strikes
+HALF = 37  # 37 + ATM + 37 = 75 strikes
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"])
-cache = {}            # symbol -> (time, data)
-inst_keys = {}        # symbol -> instrument_key
-
-
-def load_token():
-    try:
-        d = json.load(open(TOKEN_FILE))
-        return d["token"] if d["day"] == str(date.today()) else None
-    except Exception:
-        return None
+cache = {}
+inst_keys = {}
 
 
 def headers():
-    t = load_token()
+    t = os.environ.get("UPSTOX_TOKEN")
     if not t:
-        raise HTTPException(401, "Token nahi hai. Pehle /login kholo.")
+        raise HTTPException(500, "UPSTOX_TOKEN set nahi hai.")
     return {"Authorization": f"Bearer {t}", "Accept": "application/json"}
 
 
-@app.get("/login")
-def login():
-    return RedirectResponse(
-        f"{BASE}/login/authorization/dialog?response_type=code"
-        f"&client_id={KEY}&redirect_uri={REDIRECT}")
-
-
-@app.get("/callback")
-def callback(code: str):
-    r = requests.post(f"{BASE}/login/authorization/token", data={
-        "code": code, "client_id": KEY, "client_secret": SECRET,
-        "redirect_uri": REDIRECT, "grant_type": "authorization_code"},
-        headers={"Accept": "application/json"}, timeout=20)
-    if r.status_code != 200:
-        raise HTTPException(400, r.text)
-    json.dump({"day": str(date.today()), "token": r.json()["access_token"]},
-              open(TOKEN_FILE, "w"))
-    return {"ok": True, "msg": "Token mil gaya, aaj ke liye kaafi hai."}
+@app.get("/")
+def home():
+    return {"ok": True, "msg": "OCC backend chal raha hai"}
 
 
 def load_instruments():
-    """NSE ki instrument list se symbol -> instrument_key map banata hai."""
     url = "https://assets.upstox.com/market-quote/instruments/exchange/NSE.json.gz"
     raw = requests.get(url, timeout=60).content
     for row in json.load(io.TextIOWrapper(gzip.GzipFile(fileobj=io.BytesIO(raw)))):
